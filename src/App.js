@@ -1,46 +1,55 @@
-import React, { useState, useEffect } from 'react';
-import './App.css';
+import React, { useState, useEffect } from "react";
+import "./App.css";
 
-import { encryptData, decryptData } from './utils/encryption';
-import { aiEvaluateStrength, aiSuggestPassword, aiCheckAnomaly } from './utils/aiEngine';
+import { encryptData, decryptData } from "./utils/encryption";
+import {
+  aiEvaluateStrength,
+  aiSuggestPassword,
+  aiCheckAnomaly,
+} from "./utils/aiEngine";
 
 function App() {
-  const [account, setAccount] = useState('');
-  const [input, setInput] = useState('');
-  const [encrypted, setEncrypted] = useState('');
-  const [decrypted, setDecrypted] = useState('');
-  const [cid, setCid] = useState('');
-  const [fetchedEncrypted, setFetchedEncrypted] = useState('');
+  const [account, setAccount] = useState("");
 
-  const [strength, setStrength] = useState('');
-  const [suggestion, setSuggestion] = useState('');
-  const [anomalyWarning, setAnomalyWarning] = useState('');
+  const [input, setInput] = useState("");
+  const [encrypted, setEncrypted] = useState("");
+  const [decrypted, setDecrypted] = useState("");
+
+  const [cid, setCid] = useState("");          // generated CID
+  const [inputCid, setInputCid] = useState(""); // user-entered CID
+  const [fetchedEncrypted, setFetchedEncrypted] = useState("");
+
+  const [strength, setStrength] = useState("");
+  const [suggestion, setSuggestion] = useState("");
+  const [anomalyWarning, setAnomalyWarning] = useState("");
+
+  /* ---------------- WALLET ---------------- */
 
   const connectWallet = async () => {
     if (!window.ethereum) {
-      alert('MetaMask not detected! Please install it.');
+      alert("MetaMask not detected!");
       return;
     }
 
-    try {
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts',
-      });
-      setAccount(accounts[0]);
-    } catch (error) {
-      console.error('MetaMask connection denied', error);
-    }
+    const accounts = await window.ethereum.request({
+      method: "eth_requestAccounts",
+    });
+
+    setAccount(accounts[0]);
   };
 
   useEffect(() => {
     const autoConnect = async () => {
       if (!window.ethereum) return;
-
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      const accounts = await window.ethereum.request({
+        method: "eth_accounts",
+      });
       if (accounts.length > 0) setAccount(accounts[0]);
     };
     autoConnect();
   }, []);
+
+  /* ---------------- AI PASSWORD ---------------- */
 
   const handleInputChange = (e) => {
     const value = e.target.value;
@@ -52,95 +61,124 @@ function App() {
   };
 
   const generateAIpassword = () => {
-    const generated = aiSuggestPassword();
-    setInput(generated);
+    const pwd = aiSuggestPassword();
+    setInput(pwd);
 
-    const analysis = aiEvaluateStrength(generated);
+    const analysis = aiEvaluateStrength(pwd);
     setStrength(analysis.strength);
     setSuggestion(analysis.suggestion);
   };
 
+  /* ---------------- IPFS UPLOAD ---------------- */
+
   const handleEncrypt = async () => {
-    if (!input.trim()) {
-      alert("Enter a password first!");
-      return;
-    }
+  if (!input || input.trim() === "") {
+    alert("Enter a password first!");
+    return;
+  }
 
-    const encryptedText = encryptData({ password: input });
-    setEncrypted(encryptedText);
+  // Encrypt locally first
+  const encryptedText = encryptData({ password: input });
+  setEncrypted(encryptedText);
 
+  try {
+    // Prepare payload for Pinata
+    const payload = {
+      pinataContent: {
+        vault: encryptedText,
+        createdAt: new Date().toISOString(),
+        app: "AI-Decentralized-Password-Vault",
+      },
+    };
+
+    console.log("Uploading to Pinata with payload:", payload);
+
+    const res = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.REACT_APP_PINATA_JWT}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    // Parse response safely
+    let data;
     try {
-      const blob = new Blob(
-        [JSON.stringify({ vault: encryptedText })],
-        { type: 'application/json' }
-      );
-
-      const formData = new FormData();
-      formData.append('file', blob, 'vault.json');
-
-      const res = await fetch(`https://api.pinata.cloud/pinning/pinFileToIPFS`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.REACT_APP_PINATA_JWT}`
-        },
-        body: formData,
-      });
-
-      const data = await res.json();
-      setCid(data.IpfsHash);
-
-    } catch (error) {
-      console.error("IPFS upload failed:", error);
+      data = await res.json();
+    } catch (jsonErr) {
+      const text = await res.text();
+      console.error("Pinata response is not JSON:", text);
+      throw new Error("Failed to parse Pinata response as JSON");
     }
-  };
+
+    console.log("Pinata response:", data);
+
+    // Check for IpfsHash
+    if (!data.IpfsHash) {
+      console.error("Pinata response missing IpfsHash:", data);
+      throw new Error("CID not returned from Pinata");
+    }
+
+    // Success: set CID state
+    setCid(data.IpfsHash);
+    alert("Successfully uploaded! CID: " + data.IpfsHash);
+  } catch (error) {
+    console.error("IPFS upload failed:", error);
+    alert("IPFS upload failed. Check console for details.");
+  }
+};
+
+  /* ---------------- IPFS FETCH ---------------- */
 
   const fetchFromIPFS = async () => {
-    if (!cid.trim()) {
-      alert("Enter a CID first!");
+    if (!inputCid || inputCid.length < 10) {
+      alert("Enter a valid CID!");
       return;
     }
 
     try {
-      const res = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
+      const res = await fetch(
+        `https://gateway.pinata.cloud/ipfs/${inputCid}`
+      );
       const json = await res.json();
       setFetchedEncrypted(json.vault);
     } catch (error) {
-      console.error("Fetching IPFS data failed:", error);
+      console.error("Fetching from IPFS failed:", error);
+      alert("Unable to fetch from IPFS");
     }
   };
+
+  /* ---------------- DECRYPT ---------------- */
 
   const decryptHandler = () => {
-    try {
-      const source = encrypted || fetchedEncrypted;
-      if (!source) {
+    const source = encrypted || fetchedEncrypted;
+    if (!source) {
       alert("No encrypted data available!");
-        return;
-      }
-
-      const anomaly = aiCheckAnomaly();
-      setAnomalyWarning(anomaly);
-
-      if (anomaly === "HIGH RISK") {
-        alert("⚠ Suspicious activity detected! Decryption blocked.");
-        return;
-      }
-
-      const decryptedText = decryptData(source);
-      setDecrypted(decryptedText.password);
-    } catch (error) {
-      console.error("Decrypt failed:", error);
+      return;
     }
+
+    const anomaly = aiCheckAnomaly();
+    setAnomalyWarning(anomaly);
+
+    if (anomaly === "HIGH RISK") {
+      alert("⚠ Decryption blocked due to suspicious activity");
+      return;
+    }
+
+    const decryptedText = decryptData(source);
+    setDecrypted(decryptedText.password);
   };
+
+  /* ---------------- UI ---------------- */
 
   return (
     <div className="container">
-
       <h1>🔐 AI-Powered Decentralized Password Vault</h1>
 
-      {/* WALLET CARD */}
+      {/* WALLET */}
       <div className="card">
-        <h2 className="section-title">Wallet Connection</h2>
-
+        <h2>Wallet</h2>
         {!account ? (
           <button onClick={connectWallet}>Connect MetaMask</button>
         ) : (
@@ -148,26 +186,21 @@ function App() {
         )}
       </div>
 
-      {/* CREATE PASSWORD CARD */}
+      {/* CREATE */}
       <div className="card">
-        <h2 className="section-title">Create New Password</h2>
+        <h2>Create Password</h2>
 
-        <input 
+        <input
           type="text"
           value={input}
           onChange={handleInputChange}
           placeholder="Enter password"
         />
 
-        {/* Strength badge */}
         {strength && (
           <p>
-            Strength:  
-            <span className={
-              strength === "Strong" ? "badge badge-strong" :
-              strength === "Medium" ? "badge badge-medium" :
-              "badge badge-weak"
-            }>
+            Strength:
+            <span className={`badge badge-${strength.toLowerCase()}`}>
               {strength}
             </span>
             <br />
@@ -183,32 +216,31 @@ function App() {
           Encrypt & Upload to IPFS
         </button>
 
-        {encrypted && (
-          <div className="code-box">
-            {encrypted}
-          </div>
-        )}
+        {encrypted && <div className="code-box">{encrypted}</div>}
 
         {cid && (
           <p>
-            <strong>CID:</strong>
-            <br />
-            <a className="link" href={`https://gateway.pinata.cloud/ipfs/${cid}`} target="_blank" rel="noreferrer">
+            <strong>IPFS CID:</strong><br />
+            <a
+              href={`https://ipfs.io/ipfs/${cid}`}
+              target="_blank"
+              rel="noreferrer"
+            >
               {cid}
             </a>
           </p>
         )}
       </div>
 
-      {/* FETCH CARD */}
+      {/* FETCH */}
       <div className="card">
-        <h2 className="section-title">Fetch Stored Password</h2>
+        <h2>Fetch Stored Vault</h2>
 
-        <input 
+        <input
           type="text"
           placeholder="Enter CID"
-          value={cid}
-          onChange={(e) => setCid(e.target.value)}
+          value={inputCid}
+          onChange={(e) => setInputCid(e.target.value)}
         />
 
         <button onClick={fetchFromIPFS}>Fetch</button>
@@ -227,7 +259,6 @@ function App() {
           <p><strong>Decrypted Password:</strong> {decrypted}</p>
         )}
       </div>
-
     </div>
   );
 }
