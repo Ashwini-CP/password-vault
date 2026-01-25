@@ -1,0 +1,20 @@
+[
+  {
+    "recordId": "3",
+    "patient": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "uploader": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "recordType": "0x78021985dc83f4f0c3e68cece1eef253a2b89633e1b993682c8b724e303d63df",
+    "dataHash": "0xf6e5ada1adb7e17a64fc1734f24be7a69b7e3d4001bd8cef128b8af07139c325",
+    "cid": "QmTestCid8090",
+    "timestamp": 1768988687985
+  },
+  {
+    "recordId": "1",
+    "patient": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "uploader": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+    "recordType": "0x78021985dc83f4f0c3e68cece1eef253a2b89633e1b993682c8b724e303d63df",
+    "dataHash": "0x659b88f4d2bf642ebb0b02d9a103ec237ec00f943e95793e69a7d7ba4b337ff9",
+    "cid": "QmWD6u4BF8b4eYDJSKKeQBaP2Ub5Bpi16UaHTKDPgf1Vnp",
+    "timestamp": 1769258815721
+  }
+]

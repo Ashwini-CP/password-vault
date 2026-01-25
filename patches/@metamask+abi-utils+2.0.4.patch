@@ -1,0 +1,93 @@
+diff --git a/node_modules/@metamask/abi-utils/dist/parsers/bool.js b/node_modules/@metamask/abi-utils/dist/parsers/bool.js
+index 1aedc46..c0f0fb6 100644
+--- a/node_modules/@metamask/abi-utils/dist/parsers/bool.js
++++ b/node_modules/@metamask/abi-utils/dist/parsers/bool.js
+@@ -1,11 +1,9 @@
+ "use strict";
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.bool = exports.getBooleanValue = void 0;
+-const superstruct_1 = require("@metamask/superstruct");
+ const utils_1 = require("@metamask/utils");
+ const errors_1 = require("../errors");
+ const number_1 = require("./number");
+-const BooleanCoercer = (0, superstruct_1.coerce)((0, superstruct_1.boolean)(), (0, superstruct_1.union)([(0, superstruct_1.literal)('true'), (0, superstruct_1.literal)('false')]), (value) => value === 'true');
+ /**
+  * Normalize a boolean value. This accepts the boolean as:
+  *
+@@ -17,16 +15,16 @@ const BooleanCoercer = (0, superstruct_1.coerce)((0, superstruct_1.boolean)(), (
+  * `BigInt(0)` for falsy values.
+  */
+ const getBooleanValue = (value) => {
+-    try {
+-        const booleanValue = (0, superstruct_1.create)(value, BooleanCoercer);
+-        if (booleanValue) {
+-            return BigInt(1);
+-        }
+-        return BigInt(0);
+-    }
+-    catch {
++    const isBooleanLiteral = typeof value === 'boolean';
++    const isBooleanString = typeof value === 'string' && (value === 'true' || value === 'false');
++    if (!isBooleanLiteral && !isBooleanString) {
+         throw new errors_1.ParserError(`Invalid boolean value. Expected a boolean literal, or the string "true" or "false", but received "${value}".`);
+     }
++    const booleanValue = isBooleanLiteral ? value : value === 'true';
++    if (booleanValue) {
++        return BigInt(1);
++    }
++    return BigInt(0);
+ };
+ exports.getBooleanValue = getBooleanValue;
+ exports.bool = {
+diff --git a/node_modules/@metamask/abi-utils/dist/parsers/function.js b/node_modules/@metamask/abi-utils/dist/parsers/function.js
+index 64e46f3..8c749da 100644
+--- a/node_modules/@metamask/abi-utils/dist/parsers/function.js
++++ b/node_modules/@metamask/abi-utils/dist/parsers/function.js
+@@ -1,7 +1,6 @@
+ "use strict";
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.fn = exports.getFunction = void 0;
+-const superstruct_1 = require("@metamask/superstruct");
+ const utils_1 = require("@metamask/utils");
+ const errors_1 = require("../errors");
+ const fixed_bytes_1 = require("./fixed-bytes");
+@@ -10,17 +9,25 @@ const fixed_bytes_1 = require("./fixed-bytes");
+  * or a byte array. The created value will always be an object with an `address`
+  * and `selector` property.
+  */
+-const FunctionStruct = (0, superstruct_1.coerce)((0, superstruct_1.object)({
+-    address: utils_1.StrictHexStruct,
+-    selector: utils_1.StrictHexStruct,
+-}), (0, superstruct_1.union)([utils_1.StrictHexStruct, (0, superstruct_1.instance)(Uint8Array)]), (value) => {
++// Manual normalization for a Solidity function-like value. This mirrors the
++// behaviour previously provided by superstruct coercions but avoids the
++// runtime dependency on the module shape (named vs default exports). It
++// accepts either:
++// - an object with `address` and `selector` strings,
++// - a hex string (0x...)
++// - a byte array (`Uint8Array` / Buffer)
++const normalizeFunctionValue = (value) => {
++    // If it's already an object with address and selector, trust it.
++    if (value && typeof value === 'object' && 'address' in value && 'selector' in value) {
++        return { address: value.address, selector: value.selector };
++    }
+     const bytes = (0, utils_1.createBytes)(value);
+     (0, utils_1.assert)(bytes.length === 24, new errors_1.ParserError(`Invalid Solidity function. Expected function to be 24 bytes long, but received ${bytes.length} bytes.`));
+     return {
+         address: (0, utils_1.bytesToHex)(bytes.subarray(0, 20)),
+         selector: (0, utils_1.bytesToHex)(bytes.subarray(20, 24)),
+     };
+-});
++};
+ /**
+  * Normalize a function. This accepts the function as:
+  *
+@@ -32,7 +39,7 @@ const FunctionStruct = (0, superstruct_1.coerce)((0, superstruct_1.object)({
+  * @returns The function as buffer.
+  */
+ const getFunction = (input) => {
+-    const value = (0, superstruct_1.create)(input, FunctionStruct);
++    const value = normalizeFunctionValue(input);
+     return (0, utils_1.concatBytes)([(0, utils_1.hexToBytes)(value.address), (0, utils_1.hexToBytes)(value.selector)]);
+ };
+ exports.getFunction = getFunction;

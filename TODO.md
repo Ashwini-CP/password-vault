@@ -1,0 +1,12 @@
+- [x] Install react-router-dom for routing
+- [x] Create ClientSide.js component for patient/viewer functionality
+- [x] Create AdminSide.js component for provider/uploader functionality
+- [x] Refactor App.js to use React Router and separate client/admin sides
+- [x] Update healthContract.js to use Sepolia testnet (chainId 0xaa36a7)
+- [x] Change event subscription from WebSocket to HTTP polling for testnet
+- [x] Update MetaMask connection logic for Sepolia network
+- [x] Create .env file with Sepolia configuration
+- [ ] Update environment variables with actual values (Infura key, contract address)
+- [ ] Deploy contract to Sepolia testnet
+- [ ] Test MetaMask connection to Sepolia
+- [ ] Test client-side and admin-side functionality

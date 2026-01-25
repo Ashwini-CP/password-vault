@@ -3,24 +3,50 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@metamask/eth-sig-util": "^7.0.3",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
+    "@web3-storage/w3up-client": "^17.3.0",
+    "assert": "^2.1.0",
+    "browserify-zlib": "^0.2.0",
+    "buffer": "^6.0.3",
     "crypto-js": "^4.2.0",
-    "ipfs-http-client": "^60.0.1",
+    "https-browserify": "^1.0.0",
+    "patch-package": "^8.0.1",
+    "postinstall-postinstall": "^2.1.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-router-dom": "^7.13.0",
     "react-scripts": "5.0.1",
+    "stream-browserify": "^3.0.0",
+    "stream-http": "^3.2.0",
+    "url": "^0.11.4",
     "web-vitals": "^2.1.4",
-    "web3": "^4.16.0",
-    "web3.storage": "^4.5.5"
+    "web3": "^4.16.0"
+  },
+  "devDependencies": {
+    "@craco/craco": "^7.1.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "cross-env": "^10.1.0",
+    "hardhat": "^2.22.18"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "start": "craco start",
+    "start:client": "cross-env PORT=3000 REACT_APP_SIDE=client craco start",
+    "start:admin": "cross-env PORT=3001 REACT_APP_SIDE=admin craco start",
+    "build": "craco build",
+    "test": "craco test",
+    "indexer": "node scripts/indexer.js",
+    "hardhat": "hardhat",
+    "chain:compile": "hardhat compile",
+    "chain:test": "hardhat test",
+    "eject": "react-scripts eject",
+    "postinstall": "patch-package"
+  },
+  "overrides": {
+    "superstruct": "npm:@metamask/superstruct@^3.1.0"
   },
   "eslintConfig": {
     "extends": [
