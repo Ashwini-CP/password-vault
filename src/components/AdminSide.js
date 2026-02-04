@@ -5,6 +5,7 @@ import {
   encryptJsonWithDEK,
   encryptDEKForPublicKey,
 } from "../utils/healthCrypto";
+import Navigation from "./Navigation";
 
 function AdminSide({ account, chainId, connectWallet, switchToExpectedChain }) {
   // Uploader flow (provider/lab/hospital)
@@ -152,10 +153,11 @@ function AdminSide({ account, chainId, connectWallet, switchToExpectedChain }) {
 
   return (
     <div className="container">
+      <Navigation isAdmin={true} />
       <h1>Admin Side - Healthcare Records (Provider/Uploader)</h1>
 
       {/* WALLET */}
-      <div className="card">
+      <div id="wallet" className="card">
         <h2>Wallet</h2>
         {!account ? (
           <button onClick={connectWallet}>Connect MetaMask</button>
@@ -166,12 +168,9 @@ function AdminSide({ account, chainId, connectWallet, switchToExpectedChain }) {
             <small>ChainId: {chainId || "unknown"}</small>
           </p>
         )}
-        <div style={{ marginTop: 8 }}>
-          <button onClick={switchToExpectedChain}>Switch MetaMask to Sepolia</button>
-        </div>
       </div>
 
-      <div className="card">
+      <div id="upload" className="card">
         <h2>Provider Upload (Encrypted record → IPFS → anchored on-chain)</h2>
 
         <input

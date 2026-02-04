@@ -27,40 +27,7 @@ function App() {
       let cid = await window.ethereum.request({ method: "eth_chainId" });
       setChainId(cid);
 
-      // Attempt to switch to Sepolia testnet
-      const expectedChain = process.env.REACT_APP_NETWORK_CHAIN_ID || "0xaa36a7"; // Sepolia
-      if (cid !== expectedChain) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: expectedChain }],
-          });
-          setChainId(expectedChain);
-        } catch (switchError) {
-          // If the chain is not added, try to add it
-          if (switchError && (switchError.code === 4902 || /Unrecognized chain/i.test(switchError.message || ''))) {
-            try {
-              await window.ethereum.request({
-                method: 'wallet_addEthereumChain',
-                params: [
-                  {
-                    chainId: expectedChain,
-                    chainName: 'Sepolia Testnet',
-                    nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
-                    rpcUrls: ['https://sepolia.infura.io/v3/YOUR_INFURA_KEY'],
-                    blockExplorerUrls: ['https://sepolia.etherscan.io'],
-                  },
-                ],
-              });
-              setChainId(expectedChain);
-            } catch (addError) {
-              console.warn('Failed to add chain to wallet', addError);
-            }
-          } else {
-            console.warn('Failed to switch chain', switchError);
-          }
-        }
-      }
+
     } catch (err) {
       console.error('connectWallet error', err);
       alert('Wallet connection failed: ' + (err && (err.message || err)));
@@ -69,14 +36,14 @@ function App() {
 
   const switchToExpectedChain = async () => {
     if (!window.ethereum) return alert('MetaMask not detected');
-    const expectedChain = process.env.REACT_APP_NETWORK_CHAIN_ID || '0xaa36a7'; // Sepolia
+    const expectedChain = process.env.REACT_APP_NETWORK_CHAIN_ID || '0x7a69'; // Local Hardhat network
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: expectedChain }],
       });
       setChainId(expectedChain);
-      alert('Switched MetaMask to Sepolia testnet.');
+      alert('Switched MetaMask to Local Network.');
     } catch (err) {
       if (err && (err.code === 4902 || /Unrecognized chain/i.test(err.message || ''))) {
         try {
@@ -85,18 +52,18 @@ function App() {
             params: [
               {
                 chainId: expectedChain,
-                chainName: 'Sepolia Testnet',
-                nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
-                rpcUrls: ['https://sepolia.infura.io/v3/YOUR_INFURA_KEY'],
-                blockExplorerUrls: ['https://sepolia.etherscan.io'],
+                chainName: 'Local Hardhat Network',
+                nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+                rpcUrls: ['http://127.0.0.1:8545'],
+                blockExplorerUrls: [],
               },
             ],
           });
           setChainId(expectedChain);
-          alert('Added and switched to Sepolia testnet.');
+          alert('Added and switched to Local Network.');
         } catch (addError) {
           console.warn('Failed to add chain to wallet', addError);
-          alert('Failed to add Sepolia testnet to MetaMask: ' + (addError.message || addError));
+          alert('Failed to add Local Network to MetaMask: ' + (addError.message || addError));
         }
       } else {
         console.warn('Failed to switch chain', err);
@@ -143,6 +110,8 @@ function App() {
       }
     };
   }, []);
+
+
 
   return (
     <div className="container">

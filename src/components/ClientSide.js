@@ -7,6 +7,7 @@ import {
   decryptDEKWithWallet,
 } from "../utils/healthCrypto";
 import { aiCheckAnomaly } from "../utils/aiEngine";
+import Navigation from "./Navigation";
 
 function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) {
   // Patient consent flow
@@ -212,8 +213,8 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) 
     }
 
     try {
-      // Use HTTP provider for testnet
-      const rpcUrl = process.env.REACT_APP_SEPOLIA_RPC_URL || 'https://sepolia.infura.io/v3/YOUR_INFURA_KEY';
+      // Use HTTP provider for localhost
+      const rpcUrl = 'http://127.0.0.1:8545';
       const localWeb3 = new Web3(rpcUrl);
       const contract = getHealthRecordsContract(localWeb3);
 
@@ -279,10 +280,11 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) 
 
   return (
     <div className="container">
+      <Navigation isAdmin={false} />
       <h1>Client Side - Healthcare Records (Patient/Viewer)</h1>
 
       {/* WALLET */}
-      <div className="card">
+      <div id="wallet" className="card">
         <h2>Wallet</h2>
         {!account ? (
           <button onClick={connectWallet}>Connect MetaMask</button>
@@ -293,12 +295,9 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) 
             <small>ChainId: {chainId || "unknown"}</small>
           </p>
         )}
-        <div style={{ marginTop: 8 }}>
-          <button onClick={switchToExpectedChain}>Switch MetaMask to Sepolia</button>
-        </div>
       </div>
 
-      <div className="card">
+      <div id="consent" className="card">
         <h2>Patient Consent (re-encrypt DEK → grant viewer)</h2>
 
         <input
