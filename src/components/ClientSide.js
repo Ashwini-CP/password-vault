@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getWeb3, getHealthRecordsContract, subscribeToEvents } from "../utils/healthContract";
+import { getHealthRecordsContract, subscribeToEvents } from "../utils/healthContract";
 import Web3 from "web3";
 import {
   decryptJsonWithDEK,
@@ -8,8 +8,27 @@ import {
 } from "../utils/healthCrypto";
 import { aiCheckAnomaly } from "../utils/aiEngine";
 import Navigation from "./Navigation";
+import { useNetwork, useNotification, useTransaction } from "../App";
 
-function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) {
+function ClientSide({ account, chainId, connectWallet, switchToExpectedChain, userRole }) {
+  // Get network configuration
+  const { getRpcUrl, contractAddress } = useNetwork();
+  // Get notification functions
+  const { addNotification } = useNotification();
+  // Get transaction functions
+  const { addTransaction } = useTransaction();
+
+  // Offline mode - cached data
+  const [cachedRecords, setCachedRecords] = useState(() => {
+    const saved = localStorage.getItem('healthVaultCachedRecords');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Save cached records to localStorage
+  useEffect(() => {
+    localStorage.setItem('healthVaultCachedRecords', JSON.stringify(cachedRecords));
+  }, [cachedRecords]);
+  
   // Patient consent flow
   const [grantRecordId, setGrantRecordId] = useState("");
   const [viewerAddress, setViewerAddress] = useState("");
@@ -31,27 +50,46 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) 
   const [isGranting, setIsGranting] = useState(false);
   const [transactionStatus, setTransactionStatus] = useState("");
 
+  // Show help tooltips
+  const [showHelp, setShowHelp] = useState({});
+
+  const toggleHelp = (field) => {
+    setShowHelp(prev => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  // Get user-friendly title based on role
+  const getTitle = () => {
+    if (userRole === 'doctor') {
+      return "Doctor Dashboard - View Patient Records";
+    }
+    return "My Health Records";
+  };
+
+  // Get user-friendly description
+  const getDescription = () => {
+    if (userRole === 'doctor') {
+      return "Access and view patient health records that have been shared with you.";
+    }
+    return "Securely manage and share your health records.";
+  };
+
   // Export the current MetaMask account's encryption public key and fill the given setter.
   async function exportEncryptionKeyAndFill(setter) {
-    if (!window.ethereum) return alert('MetaMask not detected');
+    if (!window.ethereum) return alert('MetaMask not detected. Please install MetaMask browser extension.');
     try {
-      // Prefer the account we already have connected in state so the export matches the UI.
       let acct = account;
       if (!acct) {
-        // No connected account in state: prompt the wallet to select/connect an account.
         const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
         acct = accounts && accounts[0];
-        if (acct) connectWallet(); // Update parent state
+        if (acct) connectWallet();
       }
-      if (!acct) return alert('No account available in MetaMask. Unlock and select an account.');
+      if (!acct) return alert('No account available. Please unlock MetaMask and try again.');
 
-      // Check currently selected account in MetaMask and warn if it differs
       try {
         const current = (await window.ethereum.request({ method: 'eth_accounts' }))[0];
         if (current && acct && current.toLowerCase() !== acct.toLowerCase()) {
           const proceed = window.confirm(
-            `MetaMask currently selected account ${current} differs from the app's account ${acct}.
-\nSwitch MetaMask to ${acct} before continuing, or press OK to request the encryption key for ${current} instead.`
+            `Your MetaMask is currently connected to ${current}.\n\nWould you like to use ${acct} instead?`
           );
           if (!proceed) return;
         }
@@ -59,7 +97,6 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) 
         // ignore account-check failures
       }
 
-      // Request the encryption public key for the chosen account (MetaMask will prompt).
       const pub = await window.ethereum.request({ method: 'eth_getEncryptionPublicKey', params: [acct] });
       if (typeof setter === 'function') setter(pub);
       try {
@@ -69,75 +106,73 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) 
       } catch (e) {
         // ignore copy failures
       }
-      alert('Encryption public key copied to clipboard and filled into the field.');
+      alert('✅ Security key copied to clipboard!');
     } catch (err) {
       console.error('exportEncryptionKeyAndFill error', err);
-      alert('Could not get encryption public key: ' + (err && (err.message || err)));
+      alert('Could not get security key: ' + (err && (err.message || err)));
     }
   }
 
   useEffect(() => {
-    if (account && process.env.REACT_APP_HEALTH_CONTRACT_ADDRESS) {
-      // Use localhost Hardhat network for event polling
-      const web3 = new Web3('http://127.0.0.1:8545');
-      subscribeToEvents(web3, process.env.REACT_APP_HEALTH_CONTRACT_ADDRESS, (eventName, values) => {
+    if (account && contractAddress) {
+      const rpcUrl = getRpcUrl();
+      const web3 = new Web3(rpcUrl);
+      subscribeToEvents(web3, contractAddress, (eventName, values) => {
         const logEntry = {
           timestamp: new Date().toISOString(),
           event: eventName,
           details: values,
         };
-        setAuditLog(prev => [logEntry, ...prev].slice(0, 50)); // Keep last 50 entries
+        setAuditLog(prev => [logEntry, ...prev].slice(0, 50));
       });
     }
-  }, [account]);
+  }, [account, contractAddress, getRpcUrl]);
 
   const grantConsent = async () => {
-    if (!account) return setTransactionStatus("Error: Connect MetaMask first.");
-    if (!grantRecordId) return setTransactionStatus("Error: Enter recordId.");
-    if (!viewerAddress || !viewerAddress.startsWith("0x")) return setTransactionStatus("Error: Enter viewer address.");
-    if (!viewerEncryptionPublicKey) return setTransactionStatus("Error: Enter viewer encryption public key (from DID/Ceramic).");
+    if (!account) return setTransactionStatus("❌ Please connect your wallet first.");
+    if (!grantRecordId) return setTransactionStatus("❌ Please enter the Record ID.");
+    if (!viewerAddress || !viewerAddress.startsWith("0x")) return setTransactionStatus("❌ Please enter a valid wallet address.");
+    if (!viewerEncryptionPublicKey) return setTransactionStatus("❌ Please enter the recipient's security key.");
 
     setIsGranting(true);
-    setTransactionStatus("Checking for anomalies...");
+    setTransactionStatus("🔒 Checking security...");
 
     const anomaly = aiCheckAnomaly();
     setAnomalyWarning(anomaly);
     if (anomaly === "HIGH RISK") {
       setIsGranting(false);
-      return setTransactionStatus("Error: Decryption/encryption blocked due to suspicious activity");
+      return setTransactionStatus("⛔ Security check failed. Please try again later.");
     }
 
     try {
-      setTransactionStatus("Processing consent...");
+      setTransactionStatus("📝 Processing your request...");
 
-      const web3 = getWeb3();
+      const rpcUrl = getRpcUrl();
+      const web3 = new Web3(rpcUrl);
       const contract = getHealthRecordsContract(web3);
 
-      // Validate contract exists at address to avoid ABI/decode errors.
       try {
         const code = await web3.eth.getCode(contract.options.address);
         if (!code || code === '0x') {
-          throw new Error(`Contract not found at ${contract.options.address}. Check REACT_APP_HEALTH_CONTRACT_ADDRESS and restart the dev server.`);
+          throw new Error(`Contract not found at ${contract.options.address}. Please check Settings.`);
         }
       } catch (e) {
         console.error('Failed to read contract code', e);
-        throw new Error('Failed to verify contract on the node: ' + (e.message || e));
+        throw new Error('Could not verify contract. Please check your network settings.');
       }
 
-      // Patient decrypts their encrypted DEK, then re-encrypts it to the viewer.
-      // Ensure the connected account is the patient for this record (only patient can grant)
       let meta;
       try {
         meta = await contract.methods.getRecord(grantRecordId).call();
       } catch (e) {
         console.error('Failed to read record meta', e);
-        throw new Error('Failed to read record metadata: ' + (e.message || e));
+        throw new Error('Could not find this record. Please check the Record ID.');
       }
       if (!meta || !meta.patient) {
-        throw new Error('No record found for id ' + grantRecordId);
+        throw new Error('No record found with this ID.');
       }
       if (meta.patient.toLowerCase() !== account.toLowerCase()) {
-        throw new Error(`Connected account ${account} is not the patient for record ${grantRecordId} (patient: ${meta.patient}). Switch MetaMask to the patient account to grant access.`);
+        throw new Error(`This record belongs to a different wallet. Please switch to the correct account.`);
       }
 
       const encryptedDEKForMe = await contract.methods.getEncryptedDEK(grantRecordId).call({ from: account });
@@ -146,33 +181,40 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) 
 
       const expiry = expiresAt ? Number(expiresAt) : 0;
 
-      setTransactionStatus("Sending transaction...");
+      setTransactionStatus("📤 Sending to blockchain...");
 
-      await contract.methods
+      const tx = await contract.methods
         .grantAccess(grantRecordId, viewerAddress, encryptedDEKForViewerHex, expiry)
         .send({ from: account });
 
-      setTransactionStatus("Success: Consent granted and encrypted key shared on-chain.");
+      // Add to transaction history
+      addTransaction({
+        type: '📤 Share Record',
+        details: `Shared record ${grantRecordId} with ${viewerAddress.slice(0, 6)}...`,
+        hash: tx.transactionHash
+      });
+
+      // Show notification
+      addNotification('Successfully shared record access!', 'success');
+
+      setTransactionStatus("✅ Success! Access has been granted.");
     } catch (e) {
       console.error('grantConsent error', e);
-      // Show more details when available
       const detail = e && (e.data || e.error || e.message) ? (e.data || e.error || e.message) : e;
-      setTransactionStatus(`Error: Grant failed: ${JSON.stringify(detail)}`);
+      setTransactionStatus(`❌ Error: ${typeof detail === 'string' ? detail : 'Something went wrong. Please try again.'}`);
+      addNotification('Failed to share record access', 'error');
     } finally {
       setIsGranting(false);
     }
   };
 
-  // Debug helper: fetch and show record metadata for a recordId
   const fetchRecordDebug = async (id) => {
-    if (!id) return alert('Enter recordId to fetch');
+    if (!id) return alert('Please enter a Record ID');
     try {
-      // Use HTTP provider for localhost
-      const rpcUrl = 'http://127.0.0.1:8545';
+      const rpcUrl = getRpcUrl();
       const localWeb3 = new Web3(rpcUrl);
       const contract = getHealthRecordsContract(localWeb3);
       const meta = await contract.methods.getRecord(id).call();
-      // JSON.stringify fails on BigInt; convert BigInt to string for display
       const safe = JSON.stringify(
         meta,
         (_, v) => (typeof v === "bigint" ? v.toString() : v),
@@ -181,63 +223,59 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) 
       setRecordDebug(safe);
     } catch (err) {
       console.error('fetchRecordDebug error', err);
-      alert('Failed to fetch record: ' + (err && (err.message || JSON.stringify(err))));
+      alert('Could not find this record. Please check the ID.');
     }
   };
 
-  // Check whether a viewer has consent for a record
   const checkConsent = async () => {
-    if (!grantRecordId) return alert('Enter RecordId to check');
-    if (!viewerAddress) return alert('Enter Viewer address to check');
+    if (!grantRecordId) return alert('Please enter a Record ID');
+    if (!viewerAddress) return alert('Please enter a wallet address');
     try {
-      const rpcUrl = 'http://127.0.0.1:8545';
+      const rpcUrl = getRpcUrl();
       const localWeb3 = new Web3(rpcUrl);
       const contract = getHealthRecordsContract(localWeb3);
       const ok = await contract.methods.canView(grantRecordId, viewerAddress).call();
-      setConsentStatus(ok ? 'YES' : 'NO');
+      setConsentStatus(ok ? '✅ YES - Access Granted' : '❌ NO - No Access');
     } catch (err) {
       console.error('checkConsent error', err);
-      setConsentStatus('ERROR: ' + (err && (err.message || JSON.stringify(err))));
+      setConsentStatus('❌ Error checking permission');
     }
   };
 
   const viewRecord = async () => {
-    if (!account) return alert("Connect MetaMask first.");
-    if (!viewRecordId) return alert("Enter recordId.");
+    if (!account) return alert("Please connect your wallet first.");
+    if (!viewRecordId) return alert("Please enter a Record ID.");
 
     const anomaly = aiCheckAnomaly();
     setAnomalyWarning(anomaly);
     if (anomaly === "HIGH RISK") {
-      alert("Decryption blocked due to suspicious activity");
+      alert("Security check failed. Please try again later.");
       return;
     }
 
     try {
-      // Use HTTP provider for localhost
-      const rpcUrl = 'http://127.0.0.1:8545';
+      const rpcUrl = getRpcUrl();
       const localWeb3 = new Web3(rpcUrl);
       const contract = getHealthRecordsContract(localWeb3);
 
-      // Validate deployment exists
       try {
         const code = await localWeb3.eth.getCode(contract.options.address);
         if (!code || code === '0x') {
-          alert(`Contract not found at ${contract.options.address}. Check REACT_APP_HEALTH_CONTRACT_ADDRESS and restart the dev server.`);
+          alert(`Contract not found. Please check Settings.`);
           return;
         }
       } catch (e) {
-        console.error('Failed to read contract code (testnet)', e);
-        alert('Failed to verify contract on the node: ' + (e.message || e));
+        console.error('Failed to read contract code', e);
+        alert('Could not verify contract. Please check network settings.');
         return;
       }
 
-      // Read metadata and encrypted DEK using the testnet node but with 'from' set to the connected wallet
       let meta;
       try {
         meta = await contract.methods.getRecord(viewRecordId).call();
       } catch (e) {
-        console.error('Failed to read record meta (testnet)', e);
-        alert('Failed to read record metadata: ' + (e.message || JSON.stringify(e)));
+        console.error('Failed to read record meta', e);
+        alert('Could not find this record. Please check the ID.');
         return;
       }
 
@@ -245,152 +283,276 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain }) 
       try {
         encryptedDEK = await contract.methods.getEncryptedDEK(viewRecordId).call({ from: account });
       } catch (e) {
-        console.error('Failed to read encrypted DEK (testnet)', e);
-        alert('Failed to read encrypted DEK for this viewer. Ensure viewer has consent: ' + (e.message || JSON.stringify(e)));
+        console.error('Failed to read encrypted DEK', e);
+        alert('You do not have permission to view this record.');
         return;
       }
 
       if (!encryptedDEK || encryptedDEK === '0x') {
-        alert('No encrypted DEK available for this viewer (no consent).');
+        alert('No access granted for this record.');
         return;
       }
 
-      // Decrypt DEK via MetaMask (must use wallet)
       let dek;
       try {
         dek = await decryptDEKWithWallet(encryptedDEK, account);
       } catch (e) {
         console.error('eth_decrypt failed', e);
-        alert('Decryption via wallet failed: ' + (e && (e.data || e.message || JSON.stringify(e))));
+        alert('Could not decrypt. Please make sure you have permission.');
         return;
       }
 
-      // Fetch payload from IPFS and decrypt locally
       const res = await fetch(`https://gateway.pinata.cloud/ipfs/${meta.cid}`);
       const json = await res.json();
       const decrypted = await decryptJsonWithDEK(json.ciphertextB64, json.ivB64, dek);
 
-      setViewResult(JSON.stringify({ meta, decrypted }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2));
+      const result = JSON.stringify({ meta, decrypted }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      setViewResult(result);
+
+      // Cache the record for offline viewing
+      const cachedRecord = {
+        id: viewRecordId,
+        data: result,
+        timestamp: new Date().toISOString()
+      };
+      setCachedRecords(prev => {
+        const filtered = prev.filter(r => r.id !== viewRecordId);
+        return [cachedRecord, ...filtered].slice(0, 10); // Keep last 10 records
+      });
+
+      // Add to transaction history
+      addTransaction({
+        type: '📥 View Record',
+        details: `Viewed record ${viewRecordId}`,
+        hash: ''
+      });
+
+      // Show notification
+      addNotification('Record loaded successfully!', 'success');
     } catch (e) {
       console.error('viewRecord error', e);
       const detail = e && (e.data || e.error || e.message) ? (e.data || e.error || e.message) : e;
-      alert(`View failed: ${JSON.stringify(detail)}`);
+      alert(`Could not load record: ${typeof detail === 'string' ? detail : 'Please try again.'}`);
+      addNotification('Failed to load record', 'error');
     }
   };
 
   return (
     <div className="container">
       <Navigation isAdmin={false} />
-      <h1>Client Side - Healthcare Records (Patient/Viewer)</h1>
+      <div className="user-friendly-header">
+        <h1>{getTitle()}</h1>
+        <p className="description">{getDescription()}</p>
+      </div>
 
       {/* WALLET */}
       <div id="wallet" className="card">
-        <h2>Wallet</h2>
+        <h2>💳 My Account</h2>
         {!account ? (
-          <button onClick={connectWallet}>Connect MetaMask</button>
+          <div className="connect-wallet-section">
+            <p>Connect your wallet to get started</p>
+            <button className="primary-btn" onClick={connectWallet}>
+              🔗 Connect Wallet
+            </button>
+          </div>
         ) : (
-          <p>
-            <strong>Connected:</strong> {account}
-            <br />
-            <small>ChainId: {chainId || "unknown"}</small>
-          </p>
+          <div className="account-info">
+            <p>
+              <strong>Connected:</strong> 
+              <span className="address">{account.slice(0, 6)}...{account.slice(-4)}</span>
+            </p>
+            <p>
+              <small>Network: {chainId || "unknown"}</small>
+            </p>
+          </div>
         )}
       </div>
 
-      <div id="consent" className="card">
-        <h2>Patient Consent (re-encrypt DEK → grant viewer)</h2>
+      {/* SHARE RECORDS - Only show for patients */}
+      {userRole === 'patient' && (
+        <div id="consent" className="card">
+          <div className="card-header">
+            <h2>📤 Share My Records</h2>
+            <button 
+              className="help-btn" 
+              onClick={() => toggleHelp('share')}
+              title="Learn more"
+            >
+              ❓
+            </button>
+          </div>
+          
+          {showHelp.share && (
+            <div className="help-box">
+              <p><strong>How to share your records:</strong></p>
+              <ol>
+                <li>Enter the Record ID you want to share</li>
+                <li>Enter the wallet address of the person you want to share with</li>
+                <li>Get their security key (they can click "Get My Key" to copy it)</li>
+                <li>Click "Share Access" to grant permission</li>
+              </ol>
+            </div>
+          )}
 
-        <input
-          type="text"
-          placeholder="RecordId"
-          value={grantRecordId}
-          onChange={(e) => setGrantRecordId(e.target.value)}
-        />
+          <div className="form-group">
+            <label>Record ID 📋</label>
+            <input
+              type="text"
+              placeholder="Enter the record ID you want to share"
+              value={grantRecordId}
+              onChange={(e) => setGrantRecordId(e.target.value)}
+            />
+          </div>
 
-        <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-          <button onClick={() => fetchRecordDebug(grantRecordId)}>Fetch record</button>
-          <button onClick={checkConsent}>Check consent</button>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+            <button className="secondary-btn" onClick={() => fetchRecordDebug(grantRecordId)}>
+              🔍 Verify Record
+            </button>
+            <button className="secondary-btn" onClick={checkConsent}>
+              ✓ Check Permission
+            </button>
+          </div>
+
+          <div className="form-group">
+            <label>Share with 👤</label>
+            <input
+              type="text"
+              placeholder="Wallet address (e.g., 0x...)"
+              value={viewerAddress}
+              onChange={(e) => setViewerAddress(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>
+              Their Security Key 🔐
+              <button 
+                className="inline-help-btn" 
+                onClick={() => toggleHelp('key')}
+                title="What is this?"
+              >
+                ℹ️
+              </button>
+            </label>
+            {showHelp.key && (
+              <div className="help-text">
+                Ask the person you want to share with to click "Get My Key" and paste it here. This ensures only they can access your records.
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Paste their security key here"
+                value={viewerEncryptionPublicKey}
+                onChange={(e) => setViewerEncryptionPublicKey(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button onClick={() => exportEncryptionKeyAndFill(setViewerEncryptionPublicKey)}>
+                📋 Get My Key
+              </button>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Expiration (optional) 📅</label>
+            <input
+              type="text"
+              placeholder="Leave blank for unlimited access"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+            />
+          </div>
+
+          <button className="primary-btn" onClick={grantConsent} disabled={isGranting}>
+            {isGranting ? "⏳ Processing..." : "✅ Share Access"}
+          </button>
+
+          {transactionStatus && (
+            <div className={`status-message ${transactionStatus.startsWith("✅") ? "success" : "error"}`}>
+              {transactionStatus}
+            </div>
+          )}
+
+          {recordDebug && (
+            <div style={{ marginTop: 12 }}>
+              <h4>Record Details</h4>
+              <pre className="code-box">{recordDebug}</pre>
+            </div>
+          )}
+          {consentStatus && (
+            <div className="consent-status">
+              <strong>Permission:</strong> {consentStatus}
+            </div>
+          )}
+
+          {anomalyWarning && (
+            <p className="warning">⚠️ <strong>Security Alert:</strong> {anomalyWarning}</p>
+          )}
         </div>
+      )}
 
-        <input
-          type="text"
-          placeholder="Viewer address (0x...)"
-          value={viewerAddress}
-          onChange={(e) => setViewerAddress(e.target.value)}
-        />
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="Viewer encryption public key (from DID/Ceramic)"
-            value={viewerEncryptionPublicKey}
-            onChange={(e) => setViewerEncryptionPublicKey(e.target.value)}
-            style={{ flex: 1 }}
-          />
-          <button onClick={() => exportEncryptionKeyAndFill(setViewerEncryptionPublicKey)}>
-            Export my encryption key
+      {/* VIEW RECORDS */}
+      <div className="card">
+        <div className="card-header">
+          <h2>📥 Access Health Data</h2>
+          <button 
+            className="help-btn" 
+            onClick={() => toggleHelp('view')}
+            title="Learn more"
+          >
+            ❓
           </button>
         </div>
-        <small style={{ display: 'block', marginTop: 6, color: '#666' }}>
-          Make sure MetaMask is set to the account you want to export; switch accounts in MetaMask before clicking.
-        </small>
 
-        <input
-          type="text"
-          placeholder="Expiry unix seconds (optional)"
-          value={expiresAt}
-          onChange={(e) => setExpiresAt(e.target.value)}
-        />
-
-        <button onClick={grantConsent} disabled={isGranting}>
-          {isGranting ? "Granting..." : "Grant Access"}
-        </button>
-
-        {transactionStatus && (
-          <div style={{ marginTop: 12, color: transactionStatus.startsWith("Error") ? "red" : "green" }}>
-            <strong>Status:</strong> {transactionStatus}
+        {showHelp.view && (
+          <div className="help-box">
+            <p><strong>How to view records:</strong></p>
+            <ol>
+              <li>Enter the Record ID shared with you</li>
+              <li>Click "View Record" to decrypt and display</li>
+            </ol>
           </div>
         )}
 
-        {recordDebug && (
-          <div style={{ marginTop: 12 }}>
-            <h4>Record metadata</h4>
-            <pre className="code-box">{recordDebug}</pre>
-          </div>
-        )}
-        {consentStatus && (
-          <div style={{ marginTop: 12 }}>
-            <strong>Consent:</strong> {consentStatus}
-          </div>
-        )}
+        <div className="form-group">
+          <label>Record ID 📋</label>
+          <input
+            type="text"
+            placeholder="Enter the record ID to view"
+            value={viewRecordId}
+            onChange={(e) => setViewRecordId(e.target.value)}
+          />
+        </div>
 
-        {anomalyWarning && (
-          <p><strong>AI Risk:</strong> {anomalyWarning}</p>
-        )}
-      </div>
-
-      <div className="card">
-        <h2>View Record (authorized viewer)</h2>
-
-        <input
-          type="text"
-          placeholder="RecordId"
-          value={viewRecordId}
-          onChange={(e) => setViewRecordId(e.target.value)}
-        />
-
-        <button onClick={viewRecord}>
-          Fetch + Decrypt
+        <button className="primary-btn" onClick={viewRecord}>
+          🔓 View Record
         </button>
 
         {viewResult && <pre className="code-box">{viewResult}</pre>}
       </div>
 
+      {/* ACTIVITY HISTORY */}
       <div className="card">
-        <h2>Real-time Audit Log</h2>
+        <div className="card-header">
+          <h2>📜 Activity History</h2>
+          <button 
+            className="help-btn" 
+            onClick={() => toggleHelp('history')}
+            title="Learn more"
+          >
+            ❓
+          </button>
+        </div>
+
+        {showHelp.history && (
+          <div className="help-text">
+            This shows a log of all activities related to your health records, including when records were shared or accessed.
+          </div>
+        )}
+
         <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #ccc', padding: '8px' }}>
           {auditLog.length === 0 ? (
-            <p>No events yet. Perform actions to see real-time updates.</p>
+            <p className="empty-state">No activity yet. Your actions will appear here.</p>
           ) : (
             auditLog.map((entry, index) => (
               <div key={index} style={{ marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>

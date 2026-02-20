@@ -2,15 +2,17 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
-## Healthcare MVP (Polygon + off-chain encrypted storage + patient consent)
+## Decentralized Password Vault for Healthcare Systems
 
-This repo includes a minimal **patient-centric consent** smart contract (`contracts/HealthRecordsConsent.sol`) and a React demo UI that:
+This project aims to develop a decentralized password vault for healthcare systems using blockchain technology. The system implements smart contracts for securely managing healthcare user and system credential metadata, applies AES encryption for encrypting healthcare-related access credentials on the client side before storage, leverages IPFS for decentralized and tamper-proof storage of encrypted password data, ensures that only authenticated healthcare professionals and authorized users can access their credentials, and validates the feasibility and reliability of the system through a functional prototype and early-stage demonstration.
 
-- encrypts a healthcare record **client-side** (AES-256-GCM)
+This repo includes a minimal smart contract (`contracts/HealthRecordsConsent.sol`) and a React demo UI that:
+
+- encrypts healthcare-related access credentials **client-side** (AES-256-GCM)
 - uploads the encrypted payload to **IPFS** (via Pinata `pinJSONToIPFS`)
-- anchors the **CID + integrity hash** on-chain on **Polygon** via `HealthRecordsConsent`
-- lets a patient **grant access** by re-encrypting the record key (DEK) to a viewer (provider/insurer) and storing that encrypted key on-chain
-- lets an authorized viewer **fetch + decrypt** using MetaMask `eth_decrypt`
+- anchors the **CID + integrity hash** on-chain on **Polygon** via smart contracts
+- manages access control for authenticated healthcare professionals and authorized users
+- provides a functional prototype for demonstration and validation
 
 ### Environment variables
 
