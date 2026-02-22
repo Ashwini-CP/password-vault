@@ -19,8 +19,13 @@ function AdminSide({ account, chainId, connectWallet, switchToExpectedChain, use
 
   // Offline mode - cached uploads
   const [cachedUploads, setCachedUploads] = useState(() => {
-    const saved = localStorage.getItem('healthVaultCachedUploads');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('healthVaultCachedUploads');
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error('Failed to parse cached uploads:', error);
+      return [];
+    }
   });
 
   // Save cached uploads to localStorage

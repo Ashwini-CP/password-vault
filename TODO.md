@@ -20,9 +20,21 @@
 - [x] 3.3 Add notifications system
 - [x] 3.4 Improve mobile responsiveness
 
+## Phase 4: Bug Fixes ✅ COMPLETE
+- [x] 4.1 Fixed navigation ID mismatch (added id="audit" to Activity History)
+- [x] 4.2 Fixed variable name bug in viewRecord error handler
+- [x] 4.3 Added try-catch for localStorage JSON.parse operations
+- [x] 4.4 Fixed useEffect dependency array in App.js
+
+## Phase 5: Deployment Setup ✅ COMPLETE
+- [x] 5.1 Created deploy_amoy.js script for Polygon Amoy deployment
+- [x] 5.2 Created DEPLOYMENT_GUIDE.md with detailed instructions
+
 ## Summary of Changes Made:
 1. **App.js** - Added NetworkContext, NotificationContext, TransactionContext, role selection, network selector, contract config, notifications panel, transaction history panel
 2. **ClientSide.js** - User-friendly labels, help tooltips, network context, notification integration, transaction tracking, offline caching
 3. **AdminSide.js** - User-friendly labels, help tooltips, network context, notification integration, transaction tracking, offline caching
 4. **Navigation.js** - Updated labels to be user-friendly
 5. **App.css** - Added new styles for all components, responsive design, notification and transaction panels
+6. **scripts/deploy_amoy.js** - New deployment script for Polygon Amoy testnet
+7. **DEPLOYMENT_GUIDE.md** - Detailed guide for deploying to Polygon Amoy and running on multiple systems

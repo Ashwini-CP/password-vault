@@ -105,8 +105,13 @@ function NotificationProvider({ children }) {
 function TransactionProvider({ children }) {
   const [transactions, setTransactions] = useState(() => {
     // Load from localStorage for offline mode
-    const saved = localStorage.getItem('healthVaultTransactions');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('healthVaultTransactions');
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error('Failed to parse transactions:', error);
+      return [];
+    }
   });
 
   // Save to localStorage whenever transactions change
@@ -289,7 +294,7 @@ function App() {
         window.ethereum.removeListener('chainChanged', () => {});
       }
     };
-  }, []);
+  }, [setSelectedNetwork]);
 
   // Role selection UI
   const renderRoleSelector = () => (

@@ -20,8 +20,13 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain, us
 
   // Offline mode - cached data
   const [cachedRecords, setCachedRecords] = useState(() => {
-    const saved = localStorage.getItem('healthVaultCachedRecords');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('healthVaultCachedRecords');
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error('Failed to parse cached records:', error);
+      return [];
+    }
   });
 
   // Save cached records to localStorage
@@ -329,9 +334,9 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain, us
 
       // Show notification
       addNotification('Record loaded successfully!', 'success');
-    } catch (e) {
-      console.error('viewRecord error', e);
-      const detail = e && (e.data || e.error || e.message) ? (e.data || e.error || e.message) : e;
+    } catch (err) {
+      console.error('viewRecord error', err);
+      const detail = err && (err.data || err.error || err.message) ? (err.data || err.error || err.message) : err;
       alert(`Could not load record: ${typeof detail === 'string' ? detail : 'Please try again.'}`);
       addNotification('Failed to load record', 'error');
     }
@@ -532,7 +537,7 @@ function ClientSide({ account, chainId, connectWallet, switchToExpectedChain, us
       </div>
 
       {/* ACTIVITY HISTORY */}
-      <div className="card">
+      <div id="audit" className="card">
         <div className="card-header">
           <h2>📜 Activity History</h2>
           <button 
